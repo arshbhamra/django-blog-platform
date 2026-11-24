@@ -1,0 +1,260 @@
+Django ORM & Database Relationships – Learning Reminder
+1. What was the topic?
+
+Understanding how Django models define database relationships and how Django ORM queries are generated from those relationships.
+
+We were working with a blog application containing these models:
+
+Category
+Tag
+Post
+PostTag
+Reaction
+Bookmark
+
+The main focus was understanding how to navigate relationships between models using Django ORM.
+
+2. What was my confusion?
+
+I had written queries such as:
+
+python
+reader.bookmarks.all()
+reader.bookmarked_posts.all()
+post.bookmarked_by.all()
+post.tags.all()
+tag_django.posts.all()
+post.author
+author.posts.all()
+
+Post.objects.filter(
+    reactions__user=reader,
+    reactions__reaction_type=Reaction.ReactionType.LIKE,
+)
+
+
+My confusion was:
+
+Where do these query names come from?
+How does Django know that post.tags exists?
+Why do we use post.bookmarked_by.all()?
+Why can I use reader.bookmarked_posts.all()?
+Are these queries specific to my models or do they work with every Django model?
+How do I figure out the correct ORM query when working with new models?
+3. What I learned
+A. Django ORM queries come from model relationships
+
+They are not random or universal query names.
+
+They are generated from the fields and relationship configurations defined in your models.
+
+Django provides relationship managers and attributes based on those definitions.
+
+B. Understanding forward relationships
+
+The forward relationship is accessed using the field name defined in the model.
+
+Example:
+
+python
+class Post(models.Model):
+    author = models.ForeignKey(User, on_delete=models.PROTECT)
+
+    tags = models.ManyToManyField(Tag)
+
+
+Queries:
+
+python
+post.author
+post.tags.all()
+
+post.author returns the related User object.
+post.tags.all() returns all related Tag objects.
+C. Understanding reverse relationships
+
+The reverse relationship allows us to navigate from the related model back to the original model.
+
+We control its name using related_name.
+
+Example:
+
+python
+class Post(models.Model):
+    author = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="posts",
+    )
+
+
+Now:
+
+python
+post.author
+author.posts.all()
+
+post.author → Get the author of a post.
+author.posts.all() → Get all posts written by that author.
+
+The name posts comes from related_name="posts".
+
+D. Understanding ManyToManyField and related_name
+
+Example from my project:
+
+python
+class Post(models.Model):
+    tags = models.ManyToManyField(
+        Tag,
+        through="PostTag",
+        related_name="posts",
+    )
+
+
+This gives us:
+
+python
+post.tags.all()
+tag.posts.all()
+
+post.tags.all() → All tags attached to a post.
+tag.posts.all() → All posts containing that tag.
+
+Remember:
+
+tags is the forward relationship name.
+posts is the reverse relationship name.
+E. Understanding through models
+
+My project uses explicit intermediate models:
+
+python
+class Bookmark(models.Model):
+    user = models.ForeignKey(User, ...)
+    post = models.ForeignKey(Post, ...)
+
+
+And:
+
+python
+bookmarked_by = models.ManyToManyField(
+    User,
+    through="Bookmark",
+    related_name="bookmarked_posts",
+)
+
+
+This gives us:
+
+python
+post.bookmarked_by.all()
+reader.bookmarked_posts.all()
+reader.bookmarks.all()
+
+
+Their meanings are different:
+
+post.bookmarked_by.all() → All users who bookmarked a post.
+reader.bookmarked_posts.all() → All posts bookmarked by a user.
+reader.bookmarks.all() → All Bookmark records created by a user.
+
+Important distinction: The first two return related objects through the ManyToMany relationship, whereas the third returns Bookmark objects.
+
+4. What happens if I don't define related_name?
+
+Django automatically creates a default reverse accessor.
+
+For example:
+
+python
+class Post(models.Model):
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+    )
+
+
+Forward:
+
+python
+post.author
+
+
+Reverse:
+
+python
+user.post_set.all()
+
+
+The default reverse accessor generally follows:
+
+modelname_set
+
+If you specify related_name, Django uses your specified name instead.
+
+5. My personal ORM learning checklist
+
+Whenever I construct models or get stuck writing ORM queries, I should ask myself:
+
+Which model am I starting from?
+Which relationship field connects it to another model?
+Is it a ForeignKey, ManyToManyField, or OneToOneField?
+What is the field name?
+What is the related_name?
+Am I accessing the relationship forward or backward?
+Do I want the related object, all related objects, or the intermediate through-model records?
+6. Important distinction: Relationship access vs filtering
+
+Relationship access:
+
+python
+post.tags.all()
+
+
+Filtering through relationships:
+
+python
+Post.objects.filter(
+    reactions__user=reader,
+    reactions__reaction_type=Reaction.ReactionType.LIKE,
+)
+
+
+Here, reactions comes from:
+
+python
+post = models.ForeignKey(
+    Post,
+    on_delete=models.CASCADE,
+    related_name="reactions",
+)
+
+
+The double underscore (__) allows Django to traverse relationships and apply filters to related model fields.
+
+7. What should I remember?
+
+Don't memorize Django ORM queries. Learn to read model relationships.
+
+The field name tells me how to access a forward relationship.
+
+The related_name tells me how to access a reverse relationship.
+
+The relationship type tells me what kind of object or collection I can retrieve.
+
+Once I understand these three things, I can construct ORM queries for almost any Django application.
+
+8. Prompt to revisit this topic with ChatGPT
+
+Whenever I get stuck with Django database management, model construction, relationships, or ORM queries, I can use this prompt:
+
+"Teach me Django ORM and model relationships using my existing models. Don't just give me the query. Explain where the query name comes from, which model field or related_name generates it, whether it is forward or reverse access, and what type of object it returns.
+
+Use practical examples, explain the relationship step by step, and help me develop the ability to construct ORM queries independently rather than memorize them.
+
+Pay special attention to ForeignKey, ManyToManyField, OneToOneField, through models, related_name, reverse relationships, and double-underscore filtering.
+
+Assume I understand basic Django models but sometimes struggle to visualize how database relationships translate into ORM queries."
+
+Learning goal: Become comfortable designing Django models, understanding database relationships, and independently writing Django ORM queries.
